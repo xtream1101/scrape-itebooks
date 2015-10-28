@@ -13,6 +13,7 @@ class ItEbooks(CustomUtils):
 
     def __init__(self, base_dir, url_header=None):
         super().__init__()
+
         # Make sure base_dir exists and is created
         self._base_dir = base_dir
 
@@ -103,7 +104,7 @@ class ItEbooks(CustomUtils):
             path_title = path_title[0:32] + "%"
 
         book_base_dir = os.path.join(self._base_dir, "ebooks")
-        prop['save_path'] = os.path.join(self._base_dir, book_base_dir, prop['publisher'], path_title)
+        prop['save_path'] = os.path.join(book_base_dir, prop['publisher'], path_title)
         prop['save_path_cover'] = os.path.join(prop['save_path'], file_name + file_ext_cover)
         prop['save_path'] = os.path.join(prop['save_path'], file_name + "." + prop['format'])
 
@@ -191,8 +192,8 @@ class ItEbooks(CustomUtils):
 
 class Author(Base):
     __tablename__ = 'authors'
-    id        = Column(Integer, primary_key=True, autoincrement=True)
-    name      = Column(String(100), nullable=False)
+    id   = Column(Integer,     primary_key=True, autoincrement=True)
+    name = Column(String(100), nullable=False)
 
 
 class Data(Base):
@@ -213,12 +214,13 @@ class Data(Base):
 
 
 class DataAuthor(Base):
-    __tablename__  = 'data_authors'
-    author_id  = Column(Integer, ForeignKey(Author.id))
-    data_id    = Column(Integer, ForeignKey(Data.id))
+    __tablename__ = 'data_authors'
+    author_id = Column(Integer, ForeignKey(Author.id))
+    data_id   = Column(Integer, ForeignKey(Data.id))
     __table_args__ = (
             PrimaryKeyConstraint('author_id', 'data_id'),
             )
+
 
 if __name__ == "__main__":
     if len(sys.argv) < 2:

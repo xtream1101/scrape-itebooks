@@ -104,10 +104,17 @@ class ItEbooks(CustomUtils):
         if len(path_title) > 32:
             path_title = path_title[0:32] + "%"
 
-        book_base_dir = os.path.join(self._base_dir, "ebooks")
-        prop['save_path'] = os.path.join(book_base_dir, prop['publisher'], path_title)
-        prop['save_path_cover'] = os.path.join(prop['save_path'], file_name + file_ext_cover)
-        prop['save_path'] = os.path.join(prop['save_path'], file_name + "." + prop['format'])
+        book_base_dir = os.path.join(self._base_dir,
+                                     "ebooks",
+                                     prop['publisher'],
+                                     path_title
+                                     )
+        prop['save_path'] = os.path.join(book_base_dir,
+                                         file_name + file_ext_cover
+                                         )
+        prop['save_path_cover'] = os.path.join(book_base_dir,
+                                               file_name + "." + prop['format']
+                                               )
 
         prop['rel_path'] = prop['save_path'].replace(self._base_dir, "")
         prop['rel_cover_path'] = prop['save_path_cover'].replace(self._base_dir, "")

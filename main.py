@@ -76,7 +76,8 @@ class ItEbooks(CustomUtils):
             return
         # Check for 404 page, not caught in get_html because the site does not throw a 404 error
         if soup.find("img", {"alt": "Page Not Found"}):
-            self.log("Error [parse]: 404 " + url)
+            # Users do not need to know about the 404 errors
+            # self.log("Error [parse]: 404 " + url)
             return False
 
         # Find data
@@ -102,7 +103,7 @@ class ItEbooks(CustomUtils):
 
         path_title = prop['title']
         if len(path_title) > 32:
-            path_title = path_title[0:32] + "%"
+            path_title = path_title[0:32] + "---"
 
         book_base_dir = os.path.join(self._base_dir,
                                      "ebooks",
@@ -120,13 +121,13 @@ class ItEbooks(CustomUtils):
         prop['rel_cover_path'] = prop['save_path_cover'].replace(self._base_dir, "")
 
         self._url_header['Referer'] = url
-        if not self.download(prop['cover_img'], prop['save_path_cover'], self._url_header):
-            self.log("Failed to save cover image: " + prop['save_path_cover'])
-        if not self.download(prop['dl_link'], prop['save_path'], self._url_header):
-            self.log("Failed to save ebook: " + prop['save_path_cover'])
 
-        self.save_props(prop)
-        self._save_meta_data(prop)
+        cover_dl = self.download(prop['cover_img'], prop['save_path_cover'], self._url_header)
+        book_dl = self.download(prop['dl_link'], prop['save_path'], self._url_header)
+
+        # Only save in database if book file was saved
+        if book_dl:
+            self._save_meta_data(prop)
 
         # Everything was successful
         return True

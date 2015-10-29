@@ -73,7 +73,7 @@ class ItEbooks(CustomUtils):
             soup = self.get_site(url, self._url_header)
         except RequestsError:
             # TODO: give a better error
-            return
+            return False
         # Check for 404 page, not caught in get_html because the site does not throw a 404 error
         if soup.find("img", {"alt": "Page Not Found"}):
             # Users do not need to know about the 404 errors
@@ -91,7 +91,11 @@ class ItEbooks(CustomUtils):
         prop['pages'] = soup.find(attrs={"itemprop": "numberOfPages"}).getText().strip()
         prop['language'] = soup.find(attrs={"itemprop": "inLanguage"}).getText().strip()
         prop['format'] = soup.find(attrs={"itemprop": "bookFormat"}).getText().strip().lower()
-        prop['dl_link'] = soup.find("a", {"href": re.compile('http://filepi.com')})['href']
+        try:
+            prop['dl_link'] = soup.find("a", {"href": re.compile('http://filepi.com')})['href']
+        except TypeError:
+            # Download link is not there
+            return False
 
         # sanitize data
         prop['publisher'] = self.sanitize(prop['publisher'])

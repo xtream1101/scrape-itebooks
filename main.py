@@ -2,6 +2,8 @@ import os
 import re
 import sys
 import signal
+import argparse
+import configparser
 from custom_utils.custom_utils import CustomUtils
 from custom_utils.exceptions import *
 from custom_utils.sql import *
@@ -12,14 +14,21 @@ os.environ['TZ'] = 'UTC'
 
 class ItEbooks(CustomUtils):
 
-    def __init__(self, base_dir, url_header=None):
+    def __init__(self, base_dir, restart=False, proxies=[], url_header=None):
         super().__init__()
-
         # Make sure base_dir exists and is created
         self._base_dir = base_dir
 
+        # Do we need to restart
+        self._restart = restart
+
         # Set url_header
         self._url_header = self._set_url_header(url_header)
+
+        # If we have proxies then add them
+        if len(proxies) > 0:
+            self.set_proxies(proxies)
+            self.log("Using IP: " + self.get_current_proxy())
 
         # Setup database
         self._db_setup()
@@ -29,7 +38,11 @@ class ItEbooks(CustomUtils):
 
     def start(self):
         latest = self.get_latest()
-        progress = self.sql.get_progress()
+
+        if self._restart is True:
+            progress = 0
+        else:
+            progress = self.sql.get_progress()
 
         if latest == progress:
             # Nothing new to get
@@ -38,8 +51,13 @@ class ItEbooks(CustomUtils):
 
         for i in range(progress + 1, latest + 1):
             self.cprint("Getting eBook: " + str(i))
-            self.parse(i)
-            self.sql.update_progress(i)
+            if self._restart is True:
+                check_data = self._db_session.query(Data).filter(Data.id == i).first()
+                if check_data is not None:
+                    continue
+
+            if self.parse(i) is not False:
+                self.sql.update_progress(i)
 
     def get_latest(self):
         """
@@ -242,11 +260,58 @@ def signal_handler(signal, frame):
 
 if __name__ == "__main__":
     signal.signal(signal.SIGINT, signal_handler)
-    if len(sys.argv) < 2:
-        print("You must pass in the save directory of the scraper")
 
-    save_dir = CustomUtils().create_path(sys.argv[1], is_dir=True)
+    # Deal with args
+    parser = argparse.ArgumentParser(description='Scrape site and archive data')
+    parser.add_argument('-c', '--config', help='Config file')
+    parser.add_argument('-d', '--dir', help='Absolute path to save directory')
+    parser.add_argument('-r', '--restart', help='Set to start parsing at 0', action='store_true')
+    args = parser.parse_args()
+
+    # Set defaults
+    save_dir = None
+    restart = None
+    proxy_list = []
+
+    if args.config is not None:
+        # Load config values
+        if not os.path.isfile(args.config):
+            print("No config file found")
+            sys.exit(0)
+
+        config = configparser.ConfigParser()
+        config.read(args.config)
+
+        # Check config file first
+        if 'main' in config:
+            if 'save_dir' in config['main']:
+                save_dir = config['main']['save_dir']
+            if 'restart' in config['main']:
+                if config['main']['restart'].lower() == 'true':
+                    restart = True
+                else:
+                    restart = False
+
+        # Proxies can only be set via config file
+        if 'proxy' in config:
+            if 'http' in config['proxy']:
+                proxy_list = config['proxy']['http'].split('\n')
+
+    # Command line args will overwrite config args
+    if args.dir is not None:
+        save_dir = args.dir
+
+    if restart is None or args.restart is True:
+        restart = args.restart
+
+    # Check to make sure we have our args
+    if args.dir is None and save_dir is None:
+        print("You must supply a config file with `save_dir` or -d")
+        sys.exit(0)
+
+    save_dir = CustomUtils().create_path(save_dir, is_dir=True)
+
     # Start the scraper
-    scrape = ItEbooks(save_dir)
+    scrape = ItEbooks(save_dir, restart=restart, proxies=proxy_list)
 
     print("")

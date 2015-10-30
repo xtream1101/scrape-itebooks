@@ -65,13 +65,15 @@ class ItEbooks(CustomUtils):
         :return: id of the newest item
         """
         self.cprint("##\tGetting newest upload id...\n")
+
         url = "http://it-ebooks.info/"
         # get the html from the url
         try:
             soup = self.get_site(url, self._url_header)
-        except RequestsError:
-            # TODO: Do something more useful here i.e. let the user know and do not just start at 0
-            return 0
+        except RequestsError as e:
+            print("Error getting latest: " + str(e))
+            sys.exit(0)
+
         max_id = soup.find("td", {"width": 120}).find("a")['href'].split('/')[-2]
         self.cprint("##\tNewest upload: " + max_id + "\n")
         return int(max_id)
@@ -89,9 +91,10 @@ class ItEbooks(CustomUtils):
         # get the html from the url
         try:
             soup = self.get_site(url, self._url_header)
-        except RequestsError:
-            # TODO: give a better error
+        except RequestsError as e:
+            print("Error getting (" + url + "): " + str(e))
             return False
+
         # Check for 404 page, not caught in get_html because the site does not throw a 404 error
         if soup.find("img", {"alt": "Page Not Found"}):
             # Users do not need to know about the 404 errors

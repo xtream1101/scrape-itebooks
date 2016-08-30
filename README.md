@@ -6,9 +6,9 @@ Scrape the site https://it-ebooks.info/ and save all the books on the site. Curr
 
 Must pass in a config file like so: `python3 it-ebooks.py -c ~/scrapers.conf`
 
-See what the conf file need to be here: https://git.eddyhintze.com/xtream1101/scraper-lib
+See what the conf file needs to contain here: https://git.eddyhintze.com/xtream1101/scraper-lib
 
-This scraper also requires the section in the config:
+This scraper also requires this section in the config:
 ```
 [it-ebooks]
 # `scraper_key` is only needed if `scraper-monitor` is enabled

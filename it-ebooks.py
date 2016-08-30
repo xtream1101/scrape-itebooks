@@ -75,7 +75,7 @@ class Worker:
 
         # Download book
         base_filename = '{last_nums}/{book_id}/{book_id}'\
-                         .format(last_nums=self.book_id[-2:], book_id=self.book_id)
+                        .format(last_nums=self.book_id[-2:], book_id=self.book_id)
 
         book_filename = '{base_filename}_book.{ext}'.format(base_filename=base_filename,
                                                             ext=parsed_data.get('format'))
@@ -165,7 +165,7 @@ class ItEbooks(Scraper):
                 last_book_id = db_session.query(Book).order_by(Book.book_id.desc()).first()
                 if last_book_id is not None:
                     setting = db_session.query(Setting).filter(Setting.bit == 0).one()
-                    setting.book_last_id = last_book_id
+                    setting.book_last_id = last_book_id.book_id
                     setting.book_last_ran = cutil.get_datetime()
 
                     db_session.add(setting)

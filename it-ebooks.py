@@ -33,7 +33,7 @@ class Worker:
             logger.warning("Response was None for url {url}".format(url=url))
             return
 
-        if soup.find("img", {"alt": "Page Not Found"}):
+        if soup.find('img', {'alt': 'Page Not Found'}):
             logger.warning("Page Not Found: {url}".format(url=url))
             return
 
@@ -55,22 +55,28 @@ class Worker:
         """
         :return: List of items with their details
         """
-        cover_source = content.find("img", {"itemprop": "image"})['src'].strip()
+        cover_source = content.find('img', {'itemprop': 'image'})['src'].strip()
+        try:
+            subtitle = content.find('h3').getText().strip()
+        except AttributeError:
+            subtitle = None
 
         parsed_data = {'book_id': self.book_id,
                        'file_location': None,
                        'file_cover_location': None,
                        'file_cover_source': self.web.scraper.BASE_URL + cover_source,
-                       'description': content.find("span", {"itemprop": "description"}).getText().strip(),
-                       'file_source': content.find("a", {"href": re.compile('http://filepi.com')})['href'],
-                       'format': content.find(attrs={"itemprop": "bookFormat"}).getText().strip().lower(),
-                       'isbn': content.find(attrs={"itemprop": "isbn"}).getText().strip(),
-                       'language': content.find(attrs={"itemprop": "inLanguage"}).getText().strip(),
-                       'pages': content.find(attrs={"itemprop": "numberOfPages"}).getText().strip(),
-                       'publisher': content.find(attrs={"itemprop": "publisher"}).getText().strip(),
-                       'title': content.find("h1", {"itemprop": "name"}).getText().strip(),
-                       'year': content.find(attrs={"itemprop": "datePublished"}).getText().strip(),
-                       'author': content.find(attrs={"itemprop": "author"}).getText().strip(),
+                       'description': content.find('span', {'itemprop': 'description'}).getText().strip(),
+                       'file_source': content.find('a', {'href': re.compile('http://filepi.com')})['href'],
+                       'format': content.find(attrs={'itemprop': 'bookFormat'}).getText().strip().lower(),
+                       'isbn': content.find(attrs={'itemprop': 'isbn'}).getText().strip(),
+                       'language': content.find(attrs={'itemprop': 'inLanguage'}).getText().strip(),
+                       'pages': content.find(attrs={'itemprop': 'numberOfPages'}).getText().strip(),
+                       'publisher': content.find(attrs={'itemprop': 'publisher'}).getText().strip(),
+                       'title': content.find('h1', {'itemprop': 'name'}).getText().strip(),
+                       'subtitle': subtitle,
+                       'year': content.find(attrs={'itemprop': 'datePublished'}).getText().strip(),
+                       'author': content.find(attrs={'itemprop': 'author'}).getText().strip(),
+                       'time_collected': cutil.get_datetime(),
                        }
 
         # Download book
@@ -189,6 +195,7 @@ class ItEbooks(Scraper):
                 book = Book()
 
             book.title = data.get('title')
+            book.subtitle = data.get('subtitle')
             book.author = data.get('author')
             book.year = data.get('year')
             book.pages = data.get('pages')
@@ -202,6 +209,7 @@ class ItEbooks(Scraper):
             book.file_location = data.get('file_location')
             book.file_cover_location = data.get('file_cover_location')
             book.book_id = data.get('book_id')
+            book.time_collected = data.get('time_collected')
 
             db_session.add(book)
             db_session.commit()

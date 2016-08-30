@@ -33,8 +33,10 @@ class Book(Base):
     pages = Column(Integer)
     publisher = Column(String(100))
     title = Column(String(512))
+    subtitle = Column(String(1024))
     year = Column(Integer)
     author = Column(String(200))
+    time_collected = Column(DateTime)
 
 
 class Setting(Base):

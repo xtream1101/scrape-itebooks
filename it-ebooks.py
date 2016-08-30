@@ -1,13 +1,12 @@
-import os
+import re
 import sys
 import time
-import json
 import signal
 import logging
+from models import db_session, Setting, Book, NoResultFound
 from scraper_monitor import scraper_monitor
 import custom_utils as cutil
-from scrapers import Scraper, Web, args, RUN_SCRAPER_AS, config, SCRAPE_ID
-# from pprint import pprint
+from scrapers import Scraper, Web
 
 # Create logger for this script
 logger = logging.getLogger(__name__)
@@ -15,7 +14,7 @@ logger = logging.getLogger(__name__)
 
 class Worker:
 
-    def __init__(self, web, comic_id):
+    def __init__(self, web, book_id):
         """
         Worker Profile
 
@@ -24,52 +23,74 @@ class Worker:
         """
         # `web` is what utilizes the profiles and proxying
         self.web = web
+        self.book_id = str(book_id)
 
         # Get the sites content as a beautifulsoup object
-        url = 'https://xkcd.com/{comic_id}/info.0.json'.format(comic_id=comic_id)
-        response = self.web.get_site(url, page_format='json')
-        if response is None:
+        url = '{base_url}/book/{book_id}/'.format(base_url=self.web.scraper.BASE_URL,
+                                                  book_id=self.book_id)
+        soup = self.web.get_site(url, page_format='html')
+        if soup is None:
             logger.warning("Response was None for url {url}".format(url=url))
             return
 
-        logger.info("Getting comic {comic_id}-{comic_title}".format(comic_id=response.get('num'),
-                                                                    comic_title=response.get('title')))
+        if soup.find("img", {"alt": "Page Not Found"}):
+            logger.warning("Page Not Found: {url}".format(url=url))
+            return
 
-        comic_filename = '{last_num}/{comic_id}{file_ext}'\
-                         .format(last_num=str(response.get('num'))[-1],
-                                 comic_id=response.get('num'),
-                                 file_ext=cutil.get_file_ext(response.get('img'))
-                                 )
-        parsed_data = {'comic_id': response.get('num'),
-                       'alt': response.get('alt'),
-                       'image_path': self.web.download(response.get('img'), comic_filename),
-                       'posted_at': '{year}-{month}-{day}'.format(year=response.get('year'),
-                                                                  month=response.get('month'),
-                                                                  day=response.get('day')),
-                       'time_collected': cutil.get_datetime(),
-                       'title': response.get('title'),
-                       'transcript': response.get('transcript'),
-                       'raw_json': json.dumps(response),
-                       }
+        logger.info("Getting book {book_id}".format(book_id=self.book_id))
 
-        # Add raw data to db
-        self.web.scraper.insert_data(parsed_data)
+        data = self.parse_book(soup)
 
-        # Remove id from list of comics to get
-        self.web.scraper.comic_ids.remove(comic_id)
+        if data is not None:
+            # Add raw data to db
+            self.web.scraper.insert_data(data)
 
-        # Add success count to stats. Keeps track of how much ref data has been parsed
-        self.web.scraper.track_stat('ref_data_success_count', 1)
+            # Add success count to stats. Keeps track of how much ref data has been parsed
+            self.web.scraper.track_stat('ref_data_success_count', 1)
 
         # Take it easy on the site
         time.sleep(1)
 
-    def parse(self, content):
+    def parse_book(self, content):
         """
         :return: List of items with their details
         """
-        # Parse the items here and return the content to be added to the db
-        pass
+        cover_source = content.find("img", {"itemprop": "image"})['src'].strip()
+
+        parsed_data = {'book_id': self.book_id,
+                       'file_location': None,
+                       'file_cover_location': None,
+                       'file_cover_source': self.web.scraper.BASE_URL + cover_source,
+                       'description': content.find("span", {"itemprop": "description"}).getText().strip(),
+                       'file_source': content.find("a", {"href": re.compile('http://filepi.com')})['href'],
+                       'format': content.find(attrs={"itemprop": "bookFormat"}).getText().strip().lower(),
+                       'isbn': content.find(attrs={"itemprop": "isbn"}).getText().strip(),
+                       'language': content.find(attrs={"itemprop": "inLanguage"}).getText().strip(),
+                       'pages': content.find(attrs={"itemprop": "numberOfPages"}).getText().strip(),
+                       'publisher': content.find(attrs={"itemprop": "publisher"}).getText().strip(),
+                       'title': content.find("h1", {"itemprop": "name"}).getText().strip(),
+                       'year': content.find(attrs={"itemprop": "datePublished"}).getText().strip(),
+                       'author': content.find(attrs={"itemprop": "author"}).getText().strip(),
+                       }
+
+        # Download book
+        base_filename = '{last_nums}/{book_id}/{book_id}'\
+                         .format(last_nums=self.book_id[-2:], book_id=self.book_id)
+
+        book_filename = '{base_filename}_book.{ext}'.format(base_filename=base_filename,
+                                                            ext=parsed_data.get('format'))
+        cover_ext = cutil.get_file_ext(parsed_data.get('file_cover_source'))
+        book_cover_filename = '{base_filename}_cover{ext}'.format(base_filename=base_filename,
+                                                                  ext=cover_ext)
+        parsed_data['file_cover_location'] = self.web.download(parsed_data.get('file_cover_source'),
+                                                               book_cover_filename)
+
+        header = {'Referer': self.web.scraper.BASE_URL}
+        parsed_data['file_location'] = self.web.download(parsed_data.get('file_source'),
+                                                         book_filename,
+                                                         header=header)
+
+        return parsed_data
 
 
 class ItEbooks(Scraper):
@@ -77,12 +98,9 @@ class ItEbooks(Scraper):
     def __init__(self, config_file=None):
         super().__init__('itebooks')
 
-        # Gives access to `self.db`
-        self.db_setup()
-
-        self.book_ids = self.get_latest_books().sort()
+        self.BASE_URL = 'https://it-ebooks.info'
+        self.book_ids = self.get_latest_books()
         self.last_id_scraped = self.get_last_scraped()
-        self.comic_ids = []
 
     def start(self):
         """
@@ -92,7 +110,7 @@ class ItEbooks(Scraper):
             logger.critical("No books found in the latest upload section")
             return
 
-        if self.book_ids[0] <= self.last_id_scraped:
+        if self.book_ids[-1] <= self.last_id_scraped:
             # No need to continue
             logger.info("Already have the newest book")
             return
@@ -100,8 +118,8 @@ class ItEbooks(Scraper):
         # Log how many items in total we will be parsing
         scraper.stats['ref_data_count'] = len(self.book_ids)
 
-        # Use `selenium` or `requests` here
-        # self.thread_profile(1, 'requests', self.ref_data, Worker)
+        # Only ever use 1 thread here
+        self.thread_profile(1, 'requests', self.book_ids, Worker)
 
     def get_latest_books(self):
         """
@@ -111,10 +129,9 @@ class ItEbooks(Scraper):
 
         tmp_web = Web(self, 'requests')
 
-        url = "https://it-ebooks.info"
         # Get the json data
         try:
-            soup = tmp_web.get_site(url, page_format='html')
+            soup = tmp_web.get_site(self.BASE_URL, page_format='html')
         except:
             logger.critical("Problem loading home page to get latest uploads", exc_info=True)
             sys.exit(1)
@@ -122,19 +139,20 @@ class ItEbooks(Scraper):
         book_list_raw = soup.find_all("td", {"width": 120})
         book_list = []
         for book in book_list_raw:
-            book_list.append(book.find('a').get('href').split('/')[-1])
+            try:
+                book_id_raw = book.find('a').get('href').split('/')[2]
+                book_list.append(int(book_id_raw))
+            except ValueError:
+                logger.error("Could not get book id from {book_id_raw}".format(book_id_raw=book_id_raw))
 
+        book_list.sort()
         return book_list
 
     def get_last_scraped(self):
         """
         Get last book scraped
         """
-        last_scraped_id = None
-        with self.db.getcursor() as cur:
-            cur.execute("""SELECT last_id FROM itebooks.setting WHERE bit=0""")
-
-            last_scraped_id = cur.fetchone()[0]
+        last_scraped_id = db_session.query(Setting).filter(Setting.bit == 0).one().book_last_id
 
         if last_scraped_id is None:
             last_scraped_id = 0
@@ -143,15 +161,19 @@ class ItEbooks(Scraper):
 
     def log_last_scraped(self):
         try:
-            with self.db.getcursor() as cur:
-                cur.execute("""SELECT ebook_id FROM itebooks.ebook
-                               ORDER BY id DESC""")
-                last_id = cur.fetchone()[0]
+            try:
+                last_book_id = db_session.query(Book).order_by(Book.book_id.desc()).first()
+                if last_book_id is not None:
+                    setting = db_session.query(Setting).filter(Setting.bit == 0).one()
+                    setting.book_last_id = last_book_id
+                    setting.book_last_ran = cutil.get_datetime()
 
-                # Log that id
-                cur.execute("""UPDATE itebooks.setting
-                               SET last_id=%(last_id)s, last_ran=%(timestamp)s
-                               WHERE bit=0""", {'last_id': last_id, 'timestamp': cutil.get_datetime()})
+                    db_session.add(setting)
+                    db_session.commit()
+            except NoResultFound:
+                # If there is no raw data then no books were collected
+                pass
+
         except:
             logger.exception("Problem logging last book scraped")
 
@@ -159,21 +181,34 @@ class ItEbooks(Scraper):
         """
         Will handle inserting data into the database
         """
-        # TODO: Make UPSERT
         try:
-            with self.db.getcursor() as cur:
-                cur.execute("""INSERT INTO itebooks.ebook
-                               (alt, comic_id, image_path, posted_at, raw_json, time_collected, title, transcript)
-                               VALUES
-                               (%(alt)s, %(comic_id)s, %(image_path)s, %(posted_at)s, %(raw_json)s,
-                                %(time_collected)s, %(title)s, %(transcript)s)""",
-                            data)
+            # Check if book is in database, if so update else create
+            try:
+                book = db_session.query(Book).filter(Book.book_id == data.get('book_id')).one()
+            except NoResultFound:
+                book = Book()
 
-                # Log how many rows were added
-                rows_affected = cur.rowcount
-                self.track_stat('rows_added_to_db', rows_affected)
+            book.title = data.get('title')
+            book.author = data.get('author')
+            book.year = data.get('year')
+            book.pages = data.get('pages')
+            book.language = data.get('language')
+            book.publisher = data.get('publisher')
+            book.isbn = data.get('isbn')
+            book.format = data.get('format')
+            book.description = data.get('description')
+            book.file_source = data.get('file_source')
+            book.file_cover_source = data.get('file_cover_source')
+            book.file_location = data.get('file_location')
+            book.file_cover_location = data.get('file_cover_location')
+            book.book_id = data.get('book_id')
+
+            db_session.add(book)
+            db_session.commit()
+            # self.track_stat('rows_added_to_db', rows_affected)
 
         except Exception:
+            db_session.rollback()
             logger.exception("Error adding to db {data}".format(data=data))
 
 
@@ -198,7 +233,7 @@ if __name__ == '__main__':
         logger.critical("Setup Error", exc_info=True)
 
     finally:
-        # scraper.log_last_scraped()
+        scraper.log_last_scraped()
         try:
             # Log stats
             scraper_monitor.stop(total_urls=scraper.stats['total_urls'],

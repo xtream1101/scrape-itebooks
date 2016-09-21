@@ -1,12 +1,12 @@
 import re
 import sys
 import time
+import cutil
 import signal
 import logging
 from models import db_session, Setting, Book, NoResultFound
 from scraper_monitor import scraper_monitor
-import custom_utils as cutil
-from scrapers import Scraper, Web
+from scraper_lib import Scraper, Web
 
 # Create logger for this script
 logger = logging.getLogger(__name__)
@@ -61,12 +61,17 @@ class Worker:
         except AttributeError:
             subtitle = None
 
+        try:
+            file_source = content.find('a', {'href': re.compile('http://filepi.com')})['href']
+        except (AttributeError, TypeError):
+            file_source = None
+
         parsed_data = {'book_id': self.book_id,
                        'file_location': None,
                        'file_cover_location': None,
                        'file_cover_source': self.web.scraper.BASE_URL + cover_source,
                        'description': content.find('span', {'itemprop': 'description'}).getText().strip(),
-                       'file_source': content.find('a', {'href': re.compile('http://filepi.com')})['href'],
+                       'file_source': file_source,
                        'format': content.find(attrs={'itemprop': 'bookFormat'}).getText().strip().lower(),
                        'isbn': content.find(attrs={'itemprop': 'isbn'}).getText().strip(),
                        'language': content.find(attrs={'itemprop': 'inLanguage'}).getText().strip(),
@@ -92,9 +97,10 @@ class Worker:
                                                                book_cover_filename)
 
         header = {'Referer': self.web.scraper.BASE_URL}
-        parsed_data['file_location'] = self.web.download(parsed_data.get('file_source'),
-                                                         book_filename,
-                                                         header=header)
+        if parsed_data.get('file_source') is not None:
+            parsed_data['file_location'] = self.web.download(parsed_data.get('file_source'),
+                                                             book_filename,
+                                                             header=header)
 
         return parsed_data
 
@@ -104,7 +110,7 @@ class ItEbooks(Scraper):
     def __init__(self, config_file=None):
         super().__init__('itebooks')
 
-        self.BASE_URL = 'https://it-ebooks.info'
+        self.BASE_URL = 'http://it-ebooks.info'
         self.book_ids = self.get_latest_books()
         self.last_id_scraped = self.get_last_scraped()
 

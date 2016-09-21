@@ -4,7 +4,7 @@ from sqlalchemy.orm import sessionmaker
 from sqlalchemy.orm.exc import NoResultFound
 from sqlalchemy.ext.declarative import declarative_base
 from sqlalchemy.exc import ProgrammingError, IntegrityError
-from scrapers import raw_config
+from scraper_lib import raw_config
 
 Base = declarative_base()
 

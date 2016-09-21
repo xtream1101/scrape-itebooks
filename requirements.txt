@@ -1,4 +1,4 @@
 -e git+https://git.eddyhintze.com/xtream1101/scraper-lib@master#egg=scraper_lib
--e git+https://github.com/xtream1101/custom-utils.git@master#egg=custom_utils
 -e git+https://github.com/xtream1101/scraper-monitor-lib@master#egg=scraper_monitor
+cutil
 sqlalchemy
